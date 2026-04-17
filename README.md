@@ -1,4 +1,16 @@
-# `flkbrg` — Tournament Framework Documentation
+# `flkbrg` — Tournament Framework 
+
+## Installation and Example
+
+Install the `flkbrg` package using the following code in R to use the provided 
+framework. 
+
+````
+pak::pkg_install("bchwtz/flkbrg")
+````
+
+The [example.R - file](examples/example.R) guides you through your first 
+tournament using the included strategies coded in R, Python and C++.
 
 ## Table of Contents
 
