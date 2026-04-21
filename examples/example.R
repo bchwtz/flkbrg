@@ -3,15 +3,20 @@ library(flkbrg)
 # List internal and load external Strategies
 python_strategies   <- load_python_strategies("strategies")
 cpp_strategies      <- load_cpp_strategies("strategies")
-r_strategies_flkbrg <- c("r_tit_for_tat", "r_traitor",  "r_defect", "r_coop")
+r_strategies_flkbrg <- c("r_tit_for_tat", "r_traitor", "r_defect", "r_coop")
+
+
+# Create a Payoff Matrix
+payoff <- flkbrg_payoff(CC = c(3, 3), CD = c(0, 5), DC = c(5, 0), DD = c(1, 1))
+payoff <- flkbrg_payoff() # Defaults also to Axelrods original payoff
+payoff
 
 # Play a single match
 match_result <- match(strategy1 = r_coop,
                       strategy2 = cpp_defect,
                       n_rounds  = 200,
                       include_info = TRUE,
-                      payoff_matrix = flkbrg::axelrod_payoff()
-                      )
+                      payoff = payoff)
 
 # Manually create a list of strategies for a tournament
 cont <- list(
@@ -28,3 +33,4 @@ contestants <- c(mget(python_strategies),
 # Play the tournament
 tournament_result <- tournament(contestants, n_rounds = 200)
 tournament_result
+

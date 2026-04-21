@@ -12,46 +12,27 @@
 #'   \code{200}.
 #' @param include_info Logical. If \code{TRUE}, a list containing
 #'   \code{total_rounds} and \code{current_round} is passed to each strategy
-#'   as \code{game_info}, allowing strategies to condition behaviour on match
-#'   length or current position. Defaults to \code{TRUE}.
-#' @param payoff_matrix A 2x2 numeric matrix defining the reward structure of
-#'   the game. Rows index the focal player's move and columns index the
-#'   opponent's move, where row/col 1 = Cooperate and row/col 2 = Defect.
-#'   The default is the standard Prisoner's Dilemma matrix:
-#'   \code{matrix(c(3, 0, 5, 1), nrow = 2, byrow = TRUE)}, yielding
-#'   CC = 3, CD = 0, DC = 5, DD = 1.
+#'   as \code{game_info}. Defaults to \code{TRUE}.
+#' @param payoff An object of class \code{flkbrg_payoff}. Use \code{flkbrg_payoff()}
+#'   to create a custom payoff structure. Defaults to the standard
+#'   Prisoner's Dilemma: CC=3, CD=0, DC=5, DD=1.
 #'
 #' @return A named list with three elements:
 #'   \describe{
 #'     \item{\code{standings}}{A data frame with one row per strategy, sorted
-#'       by descending \code{Avg_Score}. Contains four columns:
-#'       \code{Rank} (integer rank after sorting, 1 = best);
-#'       \code{Strategy} (strategy name as supplied in \code{strategies_list});
-#'       \code{Avg_Score} (the strategy's average payoff per round, averaged
-#'         across all opponents including self — this is the primary Axelrod
-#'         ranking criterion and equals the row mean of \code{score_matrix});
-#'       \code{Coop_Rate} (the strategy's average cooperation rate across all
-#'         opponents, where 1 means always cooperate and 0 means always defect
-#'         — equals the row mean of \code{coop_matrix}).}
+#'       by descending \code{Avg_Score}. Contains columns: \code{Rank},
+#'       \code{Strategy}, \code{Total_Score} (sum of all points earned),
+#'       \code{Avg_Score} (row mean of score matrix), and
+#'       \code{Coop_Rate} (row mean of coop matrix).}
 #'     \item{\code{score_matrix}}{An \code{n x n} numeric matrix of average
-#'       payoffs per round. Entry \code{[i, j]} is the average payoff per
-#'       round earned by strategy \code{i} when playing against strategy
-#'       \code{j}. The matrix is asymmetric: \code{[i, j]} and \code{[j, i]}
-#'       reflect each player's own payoff from the same match and will differ
-#'       whenever the two strategies do not score equally against each other.
-#'       \code{Avg_Score} in \code{standings} is the row mean of this matrix.}
+#'       payoffs per round earned by strategy \code{[i, j]} against \code{[j]}.}
 #'     \item{\code{coop_matrix}}{An \code{n x n} numeric matrix of cooperation
-#'       rates. Entry \code{[i, j]} is the proportion of rounds in which
-#'       strategy \code{i} played C when facing strategy \code{j}, ranging
-#'       from 0 (always defect) to 1 (always cooperate). The matrix is
-#'       asymmetric: \code{[i, j]} and \code{[j, i]} record each player's own
-#'       behaviour in the same match. \code{Coop_Rate} in \code{standings} is
-#'       the row mean of this matrix.}
+#'       rates (0 to 1) for each player in the matchups.}
 #'   }
 #'
 #' @export
 tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
-                       payoff_matrix = matrix(c(3, 0, 5, 1), nrow = 2, byrow = TRUE)) {
+                       payoff = flkbrg_payoff()) {
 
   if (!is.list(strategies_list)) stop("strategies_list must be a named list.")
   strat_names <- names(strategies_list)
@@ -68,14 +49,16 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
 
   for (idx in seq_len(n)) {
     for (jdx in idx:n) {
+
       res <- match(
         strategies_list[[idx]],
         strategies_list[[jdx]],
-        n_rounds     = n_rounds,
-        include_info = include_info,
-        payoff_matrix = payoff_matrix
+        n_rounds      = n_rounds,
+        include_info  = include_info,
+        payoff        = payoff
       )
 
+      # Store normalized scores (payoff per round) in the matrix
       score_matrix[idx, jdx] <- res$scores["P1"] / n_rounds
       score_matrix[jdx, idx] <- res$scores["P2"] / n_rounds
 
@@ -89,16 +72,23 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
     }
   }
 
-  avg_score  <- rowMeans(score_matrix)
-  avg_coop   <- rowMeans(coop_matrix, na.rm = TRUE)
+  # Calculation logic:
+  # Avg_Score is the mean of the normalized payoffs per round.
+  # Total_Score is the sum of raw points across all matches.
+  avg_score   <- rowMeans(score_matrix)
+  total_score <- rowSums(score_matrix) * n_rounds
+  avg_coop    <- rowMeans(coop_matrix, na.rm = TRUE)
 
   standings <- data.frame(
-    Rank       = NA,
-    Strategy   = strat_names,
-    Avg_Score  = round(avg_score, 3),
-    Coop_Rate  = round(avg_coop,  3),
+    Rank        = NA,
+    Strategy    = strat_names,
+    Total_Score = round(total_score, 2),
+    Avg_Score   = round(avg_score, 3),
+    Coop_Rate   = round(avg_coop,  3),
     stringsAsFactors = FALSE
   )
+
+  # Sort by Avg_Score descending (Axelrod's ranking criterion)
   standings      <- standings[order(-standings$Avg_Score), ]
   standings$Rank <- seq_len(nrow(standings))
   rownames(standings) <- NULL
