@@ -1,30 +1,39 @@
-# `flkbrg` — Tournament Framework 
+# `flkbrg` — Tournament Framework
+
+Note: Watch out, this is mostly generated and needs to be handled with special care.
 
 ## Installation and Example
 
-Install the `flkbrg` package using the following code in R to use the provided 
-framework. 
+Install the `flkbrg` package using the following code in R:
 
-````
+```r
 pak::pkg_install("bchwtz/flkbrg")
-````
+```
 
-The [example.R - file](examples/example.R) guides you through your first 
+The [example.R - file](examples/example.R) guides you through your first
 tournament using the included strategies coded in R, Python and C++.
 
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [The Prisoner's Dilemma](#the-prisoners-dilemma)
-3. [Core Functions](#core-functions)
+3. [The Payoff Matrix](#the-payoff-matrix)
+   - [Default values](#default-values)
+   - [Customising the payoff](#customising-the-payoff)
+   - [Validity conditions](#validity-conditions)
+4. [Core Functions](#core-functions)
    - [match()](#match)
    - [tournament()](#tournament)
-4. [Writing a Strategy](#writing-a-strategy)
+5. [Loading Strategies](#loading-strategies)
+   - [load_python_strategies()](#load_python_strategies)
+   - [load_cpp_strategies()](#load_cpp_strategies)
+6. [Writing a Strategy](#writing-a-strategy)
    - [R skeleton](#r-skeleton)
    - [Python skeleton](#python-skeleton)
    - [C++ skeleton](#c-skeleton)
-5. [Strategy Arguments in Detail](#strategy-arguments-in-detail)
-6. [Evaluation Metrics](#evaluation-metrics)
+7. [Built-in Strategies](#built-in-strategies)
+8. [Strategy Arguments in Detail](#strategy-arguments-in-detail)
+9. [Evaluation Metrics](#evaluation-metrics)
 
 ---
 
@@ -32,9 +41,10 @@ tournament using the included strategies coded in R, Python and C++.
 
 `flkbrg` is a round-robin tournament framework for iterated Prisoner's Dilemma
 strategies. Strategies can be written in **R**, **Python**, or **C++** and
-compete against each other on equal terms. The framework is built around two
-core functions:
+compete against each other on equal terms. The framework is built around three
+core components:
 
+- `flkbrg_payoff()` — constructs the payoff structure used by all matches.
 - `match()` — runs a single head-to-head game between two strategies.
 - `tournament()` — runs a full round-robin across all registered strategies and
   produces a ranked evaluation.
@@ -49,21 +59,76 @@ opponents, not by win/loss count.
 
 Each round, both players simultaneously choose to either **Cooperate (C)** or
 **Defect (D)**. The payoff each player receives depends on the combination of
-both choices, as defined by the payoff matrix:
-
-|                  | Opponent: C | Opponent: D |
-|------------------|-------------|-------------|
-| **Player: C**    | 3 (Reward)  | 0 (Sucker)  |
-| **Player: D**    | 5 (Temptation) | 1 (Punishment) |
+both choices, as defined by the payoff matrix.
 
 The structure creates a social dilemma: mutual cooperation yields the best
-collective outcome (3 + 3 = 6), but each individual is always tempted to defect
-(5 > 3), and mutual defection leaves both players worse off than if they had
-cooperated (1 < 3).
+collective outcome, but each individual is always tempted to defect, and mutual
+defection leaves both players worse off than if they had cooperated.
 
-The payoff values must satisfy **T > R > P > S** and **2R > T + S** to
-constitute a valid Prisoner's Dilemma. The default values (T=5, R=3, P=1, S=0)
-are those used by Axelrod.
+---
+
+## The Payoff Matrix
+
+### Default values
+
+Payoffs are represented as `(Player 1, Player 2)` tuples. The default matrix
+uses the values from Axelrod's original tournaments:
+
+```
+ \         P2
+  \    C           D
+P1 \ ------      ------
+ C | (3, 3)      (0, 5)
+ D | (5, 0)      (1, 1)
+```
+
+The four outcomes and their conventional names are:
+
+| Outcome | P1 move | P2 move | P1 payoff | P2 payoff | Name                    |
+|---------|---------|---------|-----------|-----------|-------------------------|
+| CC      | C       | C       | 3         | 3         | Reward (mutual coop.)   |
+| CD      | C       | D       | 0         | 5         | Sucker / Temptation     |
+| DC      | D       | C       | 5         | 0         | Temptation / Sucker     |
+| DD      | D       | D       | 1         | 1         | Punishment (mutual def.)|
+
+### Customising the payoff
+
+Use `flkbrg_payoff()` to create a payoff object. Each argument is a numeric
+vector of length 2 giving the `c(P1, P2)` payoffs for that move combination:
+
+```r
+# Default Axelrod payoff (no arguments needed)
+p <- flkbrg_payoff()
+
+# Custom payoff
+p_custom <- flkbrg_payoff(
+  CC = c(3, 3),
+  CD = c(0, 5),
+  DC = c(5, 0),
+  DD = c(1, 1)
+)
+
+# Inspect it
+print(p)
+```
+
+The resulting object has class `"flkbrg_payoff"` and contains named elements
+`CC`, `CD`, `DC`, `DD` (the raw tuples) as well as two matrices `P1` and `P2`
+that are used internally by `match()` to look up payoffs by move name.
+
+Pass a custom payoff object to `match()` or `tournament()` via the `payoff`
+argument. Both functions default to `flkbrg_payoff()`.
+
+### Validity conditions
+
+For the game to constitute a valid Prisoner's Dilemma, payoffs must satisfy:
+
+$$T > R > P > S \quad \text{and} \quad 2R > T + S$$
+
+where **T** = Temptation (DC[1]), **R** = Reward (CC[1]), **P** = Punishment
+(DD[1]), and **S** = Sucker (CD[1]). The framework does not enforce these
+conditions automatically — it is the user's responsibility to supply a valid
+payoff structure.
 
 ---
 
@@ -75,19 +140,45 @@ are those used by Axelrod.
 number of rounds. It is the atomic unit of the framework — `tournament()` is
 built entirely on top of it.
 
+**Signature:**
+
+```r
+match(strategy1, strategy2, n_rounds = 200, include_info = TRUE,
+      payoff = flkbrg_payoff())
+```
+
+**Arguments:**
+
+| Argument       | Type               | Default          | Description                                              |
+|----------------|--------------------|------------------|----------------------------------------------------------|
+| `strategy1`    | function           | —                | Strategy function for Player 1.                          |
+| `strategy2`    | function           | —                | Strategy function for Player 2.                          |
+| `n_rounds`     | integer            | `200`            | Number of rounds per match (Axelrod's original default). |
+| `include_info` | logical            | `TRUE`           | Whether to pass `game_info` metadata to strategies.      |
+| `payoff`       | `flkbrg_payoff`    | `flkbrg_payoff()`| Payoff structure. Must be a `flkbrg_payoff` object.      |
+
+**Return value:**
+
+A named list with three elements:
+
+- `strategies` — named character vector `c(P1 = ..., P2 = ...)` with strategy names.
+- `scores` — named numeric vector `c(P1 = ..., P2 = ...)` with **raw** cumulative scores.
+- `history` — a data frame with one row per round and columns `Round`, `P1`, `P2`, `P1_Payoff`, `P2_Payoff`.
+
+Note that `match()` returns **raw** (un-normalised) scores. Normalisation to
+average payoff per round happens inside `tournament()`.
+
 **What it does, step by step:**
 
 1. Initialises empty move histories and scores for both players.
-2. For each round, calls both strategy functions, passing them the current state
-   of the game.
-3. Maps each returned move (`"C"` or `"D"`) to its row/column index in the
-   payoff matrix and computes both players' payoffs for that round.
+2. For each round, calls both strategy functions with the current game state.
+3. Uses the returned moves (`"C"` or `"D"`) to index the `P1` and `P2` payoff matrices.
 4. Appends the moves and payoffs to the running history.
 5. Returns the cumulative raw scores and the full round-by-round history.
 
-The function is **symmetric**: both strategies receive exactly the same
-information about the game state, just from their own perspective (i.e. their
-own history is `my_hist` and the opponent's is `opp_hist`).
+The function is **symmetric**: both strategies receive the same game-state
+information, just from their own perspective (`my_hist` is their own history,
+`opp_hist` is the opponent's).
 
 ---
 
@@ -99,11 +190,80 @@ is matched exactly once. For `n` strategies this produces:
 
 $$M = \frac{n(n+1)}{2}$$
 
-unique matches. Each match is delegated to `match()`, and the raw scores are
-immediately normalised to **average payoff per round** before being stored.
+unique matches.
 
-The result is two `n × n` matrices (scores and cooperation rates) from which a
-ranked standings table is derived.
+**Signature:**
+
+```r
+tournament(strategies_list, n_rounds = 200, include_info = TRUE,
+           payoff = flkbrg_payoff())
+```
+
+**Arguments:**
+
+| Argument          | Type            | Default           | Description                                                    |
+|-------------------|-----------------|-------------------|----------------------------------------------------------------|
+| `strategies_list` | named list      | —                 | Named list of strategy functions, e.g. `list(TFT = r_tit_for_tat, ...)`. Names are required. |
+| `n_rounds`        | integer         | `200`             | Rounds per match.                                              |
+| `include_info`    | logical         | `TRUE`            | Whether to pass `game_info` to strategies.                     |
+| `payoff`          | `flkbrg_payoff` | `flkbrg_payoff()` | Payoff structure.                                              |
+
+**Return value:**
+
+A named list with four elements:
+
+- `standings` — a data frame sorted by descending `Avg_Score`, with columns `Rank`, `Strategy`, `Avg_Score`, and `Coop_Rate`.
+- `avg_score_matrix` — an `n × n` matrix of **average** payoffs per round, where entry `[i, j]` is strategy `i`'s normalised score against strategy `j`.
+- `total_score_matrix` — an `n × n` matrix of **raw** cumulative scores across all rounds.
+- `coop_matrix` — an `n × n` matrix of cooperation rates (0–1), where entry `[i, j]` is the fraction of rounds strategy `i` played C against strategy `j`.
+
+Progress is printed to the console as each match completes.
+
+---
+
+## Loading Strategies
+
+### `load_python_strategies()`
+
+Scans a directory for `.py` files, sources each one via `reticulate`, and
+registers the `strategy` function it defines in the target environment under the
+name `py_<filename>`.
+
+```r
+load_python_strategies(directory = "strategies", prefix = "py_", env = .GlobalEnv)
+```
+
+| Argument    | Default        | Description                                    |
+|-------------|----------------|------------------------------------------------|
+| `directory` | `"strategies"` | Path to the folder containing `.py` files.     |
+| `prefix`    | `"py_"`        | Prefix prepended to each registered name.      |
+| `env`       | `.GlobalEnv`   | Environment where functions are assigned.      |
+
+Returns a character vector of successfully loaded strategy names. Each `.py`
+file **must** define a top-level function named `strategy` — this is the symbol
+the loader looks for after sourcing the file.
+
+### `load_cpp_strategies()`
+
+Scans a directory for `.cpp` files and compiles each one via `Rcpp::sourceCpp`.
+The compiled functions are registered in the target environment under the names
+declared by their `// [[Rcpp::export]]` annotation (typically `cpp_<name>`).
+
+```r
+load_cpp_strategies(directory = "strategies", env = .GlobalEnv)
+```
+
+| Argument    | Default        | Description                                     |
+|-------------|----------------|-------------------------------------------------|
+| `directory` | `"strategies"` | Path to the folder containing `.cpp` files.     |
+| `env`       | `.GlobalEnv`   | Environment where functions are loaded.         |
+
+Returns a character vector of successfully compiled strategy names. Unlike the
+Python loader, there is no `prefix` argument: the exported symbol name is fixed
+at compile time by the `// [[Rcpp::export]]` annotation in the C++ source. By
+convention the exported function should be named `cpp_<strategy_name>` to match
+the file name (e.g. `tit_for_tat.cpp` exports `cpp_tit_for_tat`). Files that
+fail to compile emit a warning and are skipped.
 
 ---
 
@@ -113,13 +273,6 @@ A strategy is a function that observes the history of the game so far and
 returns a single move: either `"C"` (cooperate) or `"D"` (defect). All
 strategies, regardless of the language they are written in, must conform to the
 same three-argument interface.
-
-Strategies are loaded automatically from the `strategies/` directory:
-
-- `.py` files are loaded via `reticulate` and registered as `py_<filename>`.
-- `.cpp` files are compiled via `Rcpp::sourceCpp` and registered as
-  `cpp_<function_name>` (as declared in the C++ source).
-- R strategies are defined directly in the package or sourced manually.
 
 ---
 
@@ -166,7 +319,7 @@ def strategy(my_hist, opp_hist, game_info=None):
 ```
 
 The file **must** define a top-level function named `strategy`. The loader
-renames it to `py_<filename>` when registering it in R.
+registers it as `py_<filename>` in R.
 
 ---
 
@@ -205,6 +358,39 @@ CharacterVector cpp_my_strategy(CharacterVector my_hist,
 
 ---
 
+## Built-in Strategies
+
+The package ships with strategies in all three supported languages.
+
+### R strategies (`strategies.R`)
+
+| Name            | Description                                                                    |
+|-----------------|--------------------------------------------------------------------------------|
+| `r_tit_for_tat` | Cooperates on round 1; thereafter mirrors the opponent's last move.            |
+| `r_traitor`     | Cooperates every round except the very last, on which it defects. Requires `include_info = TRUE`. |
+| `r_defect`      | Always defects.                                                                |
+| `r_coop`        | Always cooperates.                                                             |
+
+### Python strategies (`strategies/`)
+
+| File                 | Registered name      | Description                                                  |
+|----------------------|----------------------|--------------------------------------------------------------|
+| `tit_for_tat.py`     | `py_tit_for_tat`     | Cooperates first; mirrors opponent's last move thereafter.   |
+| `grudger.py`         | `py_grudger`         | Cooperates until the opponent defects once, then defects forever. |
+| `cooperate.py`       | `py_cooperate`       | Always cooperates.                                           |
+| `defect.py`          | `py_defect`          | Always defects.                                              |
+
+### C++ strategies (`strategies/`)
+
+| File                 | Registered name      | Description                                                  |
+|----------------------|----------------------|--------------------------------------------------------------|
+| `tit_for_tat.cpp`    | `cpp_tit_for_tat`    | Cooperates first; mirrors opponent's last move thereafter.   |
+| `traitor.cpp`        | `cpp_traitor`        | Cooperates every round except the last. Requires `game_info`.|
+| `cooperate.cpp`      | `cpp_cooperate`      | Always cooperates.                                           |
+| `defect.cpp`         | `cpp_defect`         | Always defects.                                              |
+
+---
+
 ## Strategy Arguments in Detail
 
 Every strategy receives the same three arguments on every round call.
@@ -215,11 +401,11 @@ A sequence of all moves this strategy has played so far in the **current
 match**, in chronological order. On round 1 the sequence is empty. Each element
 is either `"C"` or `"D"`.
 
-| Language | Type                         | Empty on round 1     |
-|----------|------------------------------|----------------------|
-| R        | `character vector`           | `character(0)`       |
-| Python   | `list` of strings            | `[]`                 |
-| C++      | `Rcpp::CharacterVector`      | `.size() == 0`       |
+| Language | Type                    | Empty on round 1 |
+|----------|-------------------------|------------------|
+| R        | `character vector`      | `character(0)`   |
+| Python   | `list` of strings       | `[]`             |
+| C++      | `Rcpp::CharacterVector` | `.size() == 0`   |
 
 ---
 
@@ -237,15 +423,15 @@ occurred in round `t`.
 An optional structured object passed only when `include_info = TRUE` is set in
 `match()` or `tournament()`. It exposes two values:
 
-| Field           | Type    | Description                                      |
-|-----------------|---------|--------------------------------------------------|
-| `total_rounds`  | integer | Total number of rounds this match will last.     |
-| `current_round` | integer | The round currently being played (1-indexed).    |
+| Field           | Type    | Description                                       |
+|-----------------|---------|---------------------------------------------------|
+| `total_rounds`  | integer | Total number of rounds this match will last.      |
+| `current_round` | integer | The round currently being played (1-indexed).     |
 
 When `include_info = FALSE`, the argument is `NA` (R/Python) or `R_NilValue`
 (C++). Strategies that require this information (e.g. end-game defectors like
-`r_traitor`) must check for its presence and raise an error if it is absent.
-Strategies that do not use it should accept it silently and ignore it.
+`r_traitor` and `cpp_traitor`) must check for its presence and raise an error
+if it is absent. Strategies that do not use it should accept it silently.
 
 ---
 
@@ -270,45 +456,54 @@ $$S_{ij}^{\text{raw}} = \sum_{t=1}^{T} p_t^{(i)}$$
 where $p_t^{(i)}$ is the payoff strategy `i` received in round $t$ as
 determined by the payoff matrix.
 
-This is immediately normalised to the **average payoff per round**:
+This is normalised to the **average payoff per round** inside `tournament()`:
 
 $$S_{ij} = \frac{S_{ij}^{\text{raw}}}{T}$$
 
 Normalisation makes scores comparable across matches of different lengths and
-is the convention used in Axelrod's original tournaments.
+is the convention used in Axelrod's original tournaments. Note that `match()`
+returns raw scores directly; the normalised `avg_score_matrix` is only computed
+by `tournament()`.
 
 ---
 
-### Score matrix
+### Score matrices
 
-The tournament produces an `n × n` score matrix **S**, where entry $S_{ij}$
-is the normalised score of strategy $i$ against strategy $j$:
+The tournament produces two `n × n` score matrices:
+
+**Average score matrix** (`avg_score_matrix`): entry $S_{ij}$ is the normalised
+(per-round) score of strategy `i` against strategy `j`:
 
 $$\mathbf{S} \in \mathbb{R}^{n \times n}, \quad S_{ij} = \frac{1}{T}\sum_{t=1}^{T} p_t^{(i \text{ vs } j)}$$
 
-The matrix is generally **asymmetric**: $S_{ij} \neq S_{ji}$ whenever the two
-strategies do not earn equal payoffs against each other (which is the common
-case). The diagonal $S_{ii}$ records a strategy's score in self-play.
+**Total score matrix** (`total_score_matrix`): entry $R_{ij}$ is the raw
+cumulative score of strategy `i` against strategy `j`:
+
+$$\mathbf{R} \in \mathbb{R}^{n \times n}, \quad R_{ij} = \sum_{t=1}^{T} p_t^{(i \text{ vs } j)}$$
+
+Both matrices are generally **asymmetric** ($S_{ij} \neq S_{ji}$) whenever the
+two strategies do not earn equal payoffs against each other. The diagonal
+records each strategy's score in self-play.
 
 ---
 
 ### Cooperation matrix
 
-An equivalent `n × n` matrix **C** records the fraction of rounds in which
-strategy $i$ played C when facing strategy $j$:
+An `n × n` matrix (`coop_matrix`) records the fraction of rounds in which
+strategy `i` played C when facing strategy `j`:
 
 $$C_{ij} = \frac{1}{T}\sum_{t=1}^{T} \mathbf{1}\!\left[m_t^{(i)} = \text{C}\right]$$
 
-where $\mathbf{1}[\cdot]$ is the indicator function. A value of 1 means the
-strategy cooperated every round against that opponent; 0 means it defected
-every round. Like the score matrix, **C** is asymmetric.
+A value of 1 means the strategy cooperated every round against that opponent;
+0 means it defected every round.
 
 ---
 
 ### Final ranking criterion: Average Score
 
 Each strategy's overall performance is summarised as the **mean of its row** in
-the score matrix, averaging across all `n` opponents (including self-play):
+the average score matrix, averaging across all `n` opponents (including
+self-play):
 
 $$\bar{S}_i = \frac{1}{n} \sum_{j=1}^{n} S_{ij}$$
 
@@ -316,23 +511,20 @@ Strategies are ranked in descending order of $\bar{S}_i$. This is the primary
 ranking criterion from Axelrod (1980) and rewards strategies that perform well
 across the **entire field** of opponents, not just against a single adversary.
 
-An equivalent cooperation summary is the row mean of **C**:
+An equivalent cooperation summary is the row mean of `coop_matrix`:
 
 $$\bar{C}_i = \frac{1}{n} \sum_{j=1}^{n} C_{ij}$$
-
-This is reported alongside $\bar{S}_i$ in the standings table and can be used
-to characterise whether high-scoring strategies tend to be cooperative or
-exploitative.
 
 ---
 
 ### Interpreting the standings table
 
-| Column       | Formula                  | Interpretation                                              |
-|--------------|--------------------------|-------------------------------------------------------------|
-| `Rank`       | rank by $\bar{S}_i$ desc | Overall position; 1 = best average performance.            |
-| `Avg_Score`  | $\bar{S}_i$              | Mean payoff per round across all opponents incl. self-play. |
-| `Coop_Rate`  | $\bar{C}_i$              | Mean cooperation rate across all opponents incl. self-play. |
+| Column       | Formula                   | Interpretation                                               |
+|--------------|---------------------------|--------------------------------------------------------------|
+| `Rank`       | rank by $\bar{S}_i$ desc  | Overall position; 1 = best average performance.             |
+| `Strategy`   | —                         | The name supplied in `strategies_list`.                      |
+| `Avg_Score`  | $\bar{S}_i$               | Mean payoff per round across all opponents incl. self-play.  |
+| `Coop_Rate`  | $\bar{C}_i$               | Mean cooperation rate across all opponents incl. self-play.  |
 
 A strategy with a high `Avg_Score` and a high `Coop_Rate` achieves good
 outcomes through mutual cooperation. A strategy with a high `Avg_Score` but a
