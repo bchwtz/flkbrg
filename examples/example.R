@@ -17,6 +17,7 @@ match_result <- match(strategy1 = r_coop,
                       n_rounds  = 200,
                       include_info = TRUE,
                       payoff = payoff)
+match_result
 
 # Manually create a list of strategies for a tournament
 cont <- list(
