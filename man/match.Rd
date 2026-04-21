@@ -2,14 +2,14 @@
 % Please edit documentation in R/match.R
 \name{match}
 \alias{match}
-\title{Simulate a single match between two players.}
+\title{Simulate a single match between two players using a flkbrg_payoff object.}
 \usage{
 match(
   strategy1,
   strategy2,
-  n_rounds = 50,
+  n_rounds = 200,
   include_info = TRUE,
-  payoff_matrix = matrix(c(3, 0, 5, 1), nrow = 2, byrow = TRUE)
+  payoff = flkbrg_payoff()
 )
 }
 \arguments{
@@ -17,15 +17,17 @@ match(
 
 \item{strategy2}{A function representing the second player's decision logic.}
 
-\item{n_rounds}{Integer specifying the number of iterations per match.}
+\item{n_rounds}{Integer specifying the number of iterations per match.
+Defaults to 200, which is the original value from Axelrods
+first tournament.}
 
 \item{include_info}{Logical indicating whether metadata should be passed to strategies.}
 
-\item{payoff_matrix}{A 2x2 matrix where 1,1=CC, 1,2=CD, 2,1=DC, 2,2=DD.}
+\item{payoff}{An object of class \code{flkbrg_payoff}. Use flkbrg_payoff() to create one.}
 }
 \value{
 A list containing names, scores, and a history data frame.
 }
 \description{
-Simulate a single match between two players.
+Simulate a single match between two players using a flkbrg_payoff object.
 }

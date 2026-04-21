@@ -56,6 +56,8 @@ flkbrg_payoff <- function(CC = c(3, 3),
 #' This is a generic print function to beautify the printing of flkbrg_payoff
 #' objects on the console. It is not dynamic and does not react to anything.
 #' There is no love in this function. Just a simple helper to not mess up stdout.
+#' @param x The flkbrg_payoff object.
+#' @param ... Additonal Arguments. Currently not used.
 #' @export
 print.flkbrg_payoff <- function(x, ...) {
   # Header section
