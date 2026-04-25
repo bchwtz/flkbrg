@@ -1,8 +1,9 @@
 #' Run an Axelrod-Style Round Robin Tournament
 #'
 #' Executes a round robin tournament in which every unique pair of strategies
-#' (including self-play) is matched exactly once. Scores are provided both as
-#' normalized averages per round and as raw total scores.
+#' (including self-play) is matched exactly once. Multiple scores are provided
+#' to evaluate the tournament. For details see the description if the returned
+#' items.
 #'
 #' @param strategies_list A named list of strategy functions. Each function must
 #'   accept three arguments: \code{my_hist}, \code{opp_hist}, and
@@ -17,18 +18,32 @@
 #'   to create a custom payoff structure. Defaults to the standard
 #'   Prisoner's Dilemma: CC=3, CD=0, DC=5, DD=1.
 #'
-#' @return A named list with four elements:
+#' @return A named list with seven elements:
 #'   \describe{
 #'     \item{\code{standings}}{A data frame with one row per strategy, sorted
 #'       by descending \code{Avg_Score}. Contains columns: \code{Rank},
-#'       \code{Strategy}, \code{Avg_Score} (row mean of avg\_score\_matrix), and
-#'       \code{Coop_Rate} (row mean of coop matrix).}
+#'       \code{Strategy}, \code{Avg_Score} (row mean of avg\_score\_matrix),
+#'       \code{Coop_Rate} (row mean of coop\_matrix), \code{jCoop_Rate} (row
+#'       mean of jcoop\_matrix), and \code{wins} (total round-level wins
+#'       across all matchups).}
 #'     \item{\code{avg_score_matrix}}{An \code{n x n} numeric matrix of average
 #'       payoffs per round earned by strategy \code{[i, j]} against \code{[j]}.}
 #'     \item{\code{total_score_matrix}}{An \code{n x n} numeric matrix of raw
 #'       payoff points earned by strategy \code{[i, j]} against \code{[j]}.}
 #'     \item{\code{coop_matrix}}{An \code{n x n} numeric matrix of cooperation
 #'       rates (0 to 1) for each player in the matchups.}
+#'     \item{\code{jcoop_matrix}}{An \code{n x n} symmetric numeric matrix of
+#'       joint cooperation rates (0 to 1), i.e. the proportion of rounds in
+#'       which \emph{both} players chose C. Entry \code{[i, j]} equals
+#'       \code{[j, i]}.}
+#'     \item{\code{wins_matrix}}{An \code{n x n} integer matrix counting the
+#'       number of rounds in which strategy \code{[i]} earned a strictly higher
+#'       payoff than strategy \code{[j]}.}
+#'     \item{\code{match_histories}}{An \code{n x n} matrix of lists. Each cell
+#'       \code{[i, j]} contains the full round-by-round history data frame for
+#'       that matchup (columns \code{P1}, \code{P2}, \code{P1_Payoff},
+#'       \code{P2_Payoff}). The matrix is symmetric: \code{[i, j]} and
+#'       \code{[j, i]} point to the same history object.}
 #'   }
 #'
 #' @export
@@ -42,9 +57,14 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
   n <- length(strategies_list)
 
   # Initialize all three matrices
-  coop_matrix      <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
-  avg_score_matrix <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
+  coop_matrix        <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
+  jcoop_matrix       <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
+  avg_score_matrix   <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
   total_score_matrix <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
+  wins_matrix        <- matrix(NA, n, n, dimnames = list(strat_names, strat_names))
+
+  # Initialize the match history matrix, which is a matrix of lists
+  match_histories <- matrix(rep(list(),n*n), n, n, dimnames = list(strat_names, strat_names))
 
   total_matches <- n * (n + 1) / 2
   done <- 0
@@ -61,6 +81,7 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
         payoff        = payoff
       )
 
+
       # 1. Populate Average Score Matrix (Payoff per round)
       avg_score_matrix[idx, jdx] <- res$scores["P1"] / n_rounds
       avg_score_matrix[jdx, idx] <- res$scores["P2"] / n_rounds
@@ -74,6 +95,20 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
       coop_matrix[idx, jdx] <- mean(h$P1 == "C")
       coop_matrix[jdx, idx] <- mean(h$P2 == "C")
 
+      # 4. Populate the Joint Cooperation Matrix
+      jcoop_rate <- mean(h$P1 == h$P2 & h$P1 == "C" & h$P2 == "C")
+      jcoop_matrix[idx, jdx] <- jcoop_matrix[jdx, idx] <- jcoop_rate
+
+      # 5. Save Match Histories
+      match_histories[idx, jdx] <- match_histories[jdx, idx] <- list(h)
+
+      # 6. Save Wins
+      wins_p1 <- sum(h$P1_Payoff > h$P2_Payoff)
+      wins_p2 <- sum(h$P1_Payoff < h$P2_Payoff)
+      draws   <- sum(h$P1_Payoff == h$P2_Payoff) # not returned
+      wins_matrix[idx, jdx] <- wins_p1
+      if (jdx != idx) wins_matrix[jdx, idx] <- wins_p2
+
       done <- done + 1
       cat(sprintf("  [%d/%d] %s vs %s\n", done, total_matches,
                   strat_names[idx], strat_names[jdx]))
@@ -83,16 +118,20 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
   # Calculate standings metrics
   avg_scores   <- rowMeans(avg_score_matrix)
   avg_coop     <- rowMeans(coop_matrix, na.rm = TRUE)
+  avg_jcoop    <- rowMeans(jcoop_matrix, na.rm = TRUE)
+  sum_wins         <- rowSums(wins_matrix, na.rm = TRUE)
 
   standings <- data.frame(
     Rank        = NA,
     Strategy    = strat_names,
     Avg_Score   = avg_scores,
     Coop_Rate   = avg_coop,
+    jCoop_Rate = avg_jcoop,
+    wins       = sum_wins,
     stringsAsFactors = FALSE
   )
 
-  # Sort by Avg_Score descending (Axelrod's ranking criterion)
+  # Sort by Avg_Score descending
   standings      <- standings[order(-standings$Avg_Score), ]
   standings$Rank <- seq_len(nrow(standings))
   rownames(standings) <- NULL
@@ -103,6 +142,9 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
     standings          = standings,
     avg_score_matrix   = avg_score_matrix,
     total_score_matrix = total_score_matrix,
-    coop_matrix        = coop_matrix
+    coop_matrix        = coop_matrix,
+    jcoop_matrix       = jcoop_matrix,
+    wins_matrix = wins_matrix,
+    match_histories    = match_histories
   ))
 }

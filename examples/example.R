@@ -35,3 +35,4 @@ contestants <- c(mget(python_strategies),
 tournament_result <- tournament(contestants, n_rounds = 200)
 tournament_result
 
+
