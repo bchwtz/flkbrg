@@ -210,12 +210,16 @@ tournament(strategies_list, n_rounds = 200, include_info = TRUE,
 
 **Return value:**
 
-A named list with four elements:
+An object of class `flkbrg_tournament` (a named list) with eight elements:
 
-- `standings` — a data frame sorted by descending `Avg_Score`, with columns `Rank`, `Strategy`, `Avg_Score`, and `Coop_Rate`.
+- `meta` — a named list of tournament-level metadata: `strategies_list`, `n_rounds`, `include_info`, and `payoff`.
+- `standings` — a data frame sorted by descending `Avg_Score`, with columns `Rank`, `Strategy`, `Avg_Score`, `Coop_Rate`, `jCoop_Rate`, and `wins`.
 - `avg_score_matrix` — an `n × n` matrix of **average** payoffs per round, where entry `[i, j]` is strategy `i`'s normalised score against strategy `j`.
 - `total_score_matrix` — an `n × n` matrix of **raw** cumulative scores across all rounds.
 - `coop_matrix` — an `n × n` matrix of cooperation rates (0–1), where entry `[i, j]` is the fraction of rounds strategy `i` played C against strategy `j`.
+- `jcoop_matrix` — a symmetric `n × n` matrix of joint cooperation rates, i.e. the fraction of rounds in which **both** strategies played C.
+- `wins_matrix` — an `n × n` integer matrix where entry `[i, j]` counts the rounds in which strategy `i` earned a strictly higher payoff than strategy `j`.
+- `match_histories` — a symmetric `n × n` matrix of lists; each cell contains the full round-by-round history data frame (`P1`, `P2`, `P1_Payoff`, `P2_Payoff`) for that matchup.
 
 Progress is printed to the console as each match completes.
 
@@ -276,16 +280,47 @@ same three-argument interface.
 
 ---
 
+### Naming and File Conventions
+
+Consistent naming makes strategies easy to identify in standings tables and
+prevents collisions when mixing strategies from multiple languages.
+
+| Language | File name              | Exported / registered name  | Example                                      |
+|----------|------------------------|-----------------------------|----------------------------------------------|
+| R        | `strategies.R` (or any `.R` file) | `r_<strategy_name>` | `r_tit_for_tat`                  |
+| Python   | `<strategy_name>.py`   | `py_<strategy_name>`        | file `tit_for_tat.py` → `py_tit_for_tat`    |
+| C++      | `<strategy_name>.cpp`  | `cpp_<strategy_name>`       | file `tit_for_tat.cpp` → `cpp_tit_for_tat`  |
+
+Additional rules:
+
+- Use **snake_case** throughout — no camelCase, no hyphens.
+- The prefix (`r_`, `py_`, `cpp_`) is mandatory and must not be omitted, as it
+  disambiguates strategies of the same name written in different languages.
+- For Python, the internal function inside the file must always be named
+  `strategy` (the loader looks for that symbol). The registered R name is
+  derived from the **file name**, not the internal function name.
+- For C++, the `// [[Rcpp::export]]` annotation must use the full `cpp_<name>`
+  form. The file name and the exported symbol should match
+  (e.g. `tit_for_tat.cpp` exports `cpp_tit_for_tat`).
+- R strategy functions should be prefixed with `r_` in their definition, not
+  just when passed to `tournament()`.
+
+---
+
 ### R skeleton
 
 ```r
 #' My Strategy
+#'
 #' @param my_hist  Character vector of this player's own moves so far.
+#'   Empty (`character(0)`) on round 1.
 #' @param opp_hist Character vector of the opponent's moves so far.
-#' @param game_info A list with $total_rounds and $current_round, or NA
-#'   if include_info = FALSE was set in match() / tournament().
-#' @return A single character: "C" or "D".
-my_strategy <- function(my_hist, opp_hist, game_info = NA) {
+#'   Empty (`character(0)`) on round 1.
+#' @param game_info A named list with elements `$total_rounds` (integer,
+#'   constant) and `$current_round` (integer, 1-indexed), or `NA` if
+#'   `include_info = FALSE` was set in `match()` / `tournament()`.
+#' @return A single character string: `"C"` or `"D"`.
+r_my_strategy <- function(my_hist, opp_hist, game_info = NA) {
 
   # On the first round both histories are empty (length 0).
   # Implement your logic here and return exactly "C" or "D".
@@ -300,14 +335,18 @@ my_strategy <- function(my_hist, opp_hist, game_info = NA) {
 
 ```python
 # my_strategy.py
-# The file name becomes part of the registered name: py_my_strategy
+# File name determines the registered R name: py_my_strategy
+# The internal function must always be named exactly `strategy`.
 
 def strategy(my_hist, opp_hist, game_info=None):
     """
-    my_hist   : list of this player's own moves, e.g. ["C", "C", "D"]
-    opp_hist  : list of the opponent's moves,    e.g. ["C", "D", "C"]
-    game_info : dict with keys 'total_rounds' and 'current_round',
-                or None if include_info = FALSE was set.
+    my_hist   : list of this player's own moves, e.g. ["C", "C", "D"].
+                Empty list [] on round 1.
+    opp_hist  : list of the opponent's moves, e.g. ["C", "D", "C"].
+                Empty list [] on round 1.
+    game_info : dict with integer keys 'total_rounds' (constant) and
+                'current_round' (1-indexed), or None if
+                include_info = FALSE was set.
 
     Must return exactly the string "C" or "D".
     """
@@ -319,7 +358,8 @@ def strategy(my_hist, opp_hist, game_info=None):
 ```
 
 The file **must** define a top-level function named `strategy`. The loader
-registers it as `py_<filename>` in R.
+registers it as `py_<filename>` in R — the file name is the source of the
+registered name, not the internal function name.
 
 ---
 
@@ -327,7 +367,6 @@ registers it as `py_<filename>` in R.
 
 ```cpp
 // my_strategy.cpp
-// The exported function name becomes the R name: cpp_my_strategy
 
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -338,23 +377,34 @@ CharacterVector cpp_my_strategy(CharacterVector my_hist,
                                 SEXP            game_info) {
   /*
    * my_hist   : CharacterVector of this player's own moves.
+   *             Size 0 on round 1.
    * opp_hist  : CharacterVector of the opponent's moves.
-   * game_info : An R list (SEXP) with named elements "total_rounds" and
-   *             "current_round" (both integers), or R_NilValue (NULL)
-   *             if include_info = FALSE was set.
+   *             Size 0 on round 1.
+   * game_info : An Rcpp::List (passed as SEXP) with named integer elements
+   *             "total_rounds" (constant across the match) and
+   *             "current_round" (1-indexed, increments each round).
+   *             Is R_NilValue (NULL) when include_info = FALSE was set.
+   *             Always check Rf_isNull(game_info) before casting to List.
    *
    * Must return a CharacterVector containing exactly one element: "C" or "D".
-   *
-   * Always check Rf_isNull(game_info) before casting to List if your
-   * strategy depends on round information.
    */
 
-  // On the first round both vectors have size 0.
-  // Implement your logic here.
+  // Example: safe access to game_info
+  // if (!Rf_isNull(game_info)) {
+  //   List info(game_info);
+  //   int total   = as<int>(info["total_rounds"]);
+  //   int current = as<int>(info["current_round"]);
+  // }
 
   return CharacterVector::create("C");
 }
 ```
+
+Unlike Python, there is no loader-applied prefix. The registered R name is
+exactly the symbol declared in `// [[Rcpp::export]]`, so the `cpp_` prefix
+must be written explicitly in the function signature. By convention the
+exported name should mirror the file name: `tit_for_tat.cpp` exports
+`cpp_tit_for_tat`.
 
 ---
 
@@ -420,18 +470,26 @@ occurred in round `t`.
 
 ### `game_info` — match metadata
 
-An optional structured object passed only when `include_info = TRUE` is set in
-`match()` or `tournament()`. It exposes two values:
+An optional structured object passed on **every round call** when `include_info = TRUE`
+is set in `match()` or `tournament()`. It always exposes exactly two fields:
 
-| Field           | Type    | Description                                       |
+| Field           | Type    | Value                                             |
 |-----------------|---------|---------------------------------------------------|
-| `total_rounds`  | integer | Total number of rounds this match will last.      |
-| `current_round` | integer | The round currently being played (1-indexed).     |
+| `total_rounds`  | integer | Total number of rounds this match will last. Constant across all rounds of the same match. |
+| `current_round` | integer | The round currently being played (1-indexed). Increments by 1 each round. |
 
-When `include_info = FALSE`, the argument is `NA` (R/Python) or `R_NilValue`
-(C++). Strategies that require this information (e.g. end-game defectors like
-`r_traitor` and `cpp_traitor`) must check for its presence and raise an error
-if it is absent. Strategies that do not use it should accept it silently.
+The concrete type of the object differs by language:
+
+| Language | Type when present              | Value when absent (`include_info = FALSE`) |
+|----------|--------------------------------|--------------------------------------------|
+| R        | named `list`                   | `NA`                                       |
+| Python   | `dict` with string keys        | `None`                                     |
+| C++      | `Rcpp::List` (passed as `SEXP`)| `R_NilValue` (test with `Rf_isNull()`)     |
+
+Strategies that require this information (e.g. end-game defectors like
+`r_traitor` and `cpp_traitor`) must check for its presence and raise an
+informative error if it is absent. Strategies that do not use it should
+accept the argument silently and ignore it.
 
 ---
 
@@ -525,6 +583,8 @@ $$\bar{C}_i = \frac{1}{n} \sum_{j=1}^{n} C_{ij}$$
 | `Strategy`   | —                         | The name supplied in `strategies_list`.                      |
 | `Avg_Score`  | $\bar{S}_i$               | Mean payoff per round across all opponents incl. self-play.  |
 | `Coop_Rate`  | $\bar{C}_i$               | Mean cooperation rate across all opponents incl. self-play.  |
+| `jCoop_Rate` | $\bar{J}_i$               | Mean joint cooperation rate (both players C) across all matchups. |
+| `wins`       | $\sum_j W_{ij}$           | Total rounds across all matchups in which this strategy earned a strictly higher payoff than its opponent. |
 
 A strategy with a high `Avg_Score` and a high `Coop_Rate` achieves good
 outcomes through mutual cooperation. A strategy with a high `Avg_Score` but a
