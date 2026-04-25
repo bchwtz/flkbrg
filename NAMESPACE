@@ -2,6 +2,7 @@
 
 S3method(print,flkbrg_payoff)
 S3method(print,flkbrg_tournament)
+export(check_strategy)
 export(flkbrg_payoff)
 export(load_cpp_strategies)
 export(load_python_strategies)

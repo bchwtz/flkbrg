@@ -27,6 +27,7 @@ tournament using the included strategies coded in R, Python and C++.
 5. [Loading Strategies](#loading-strategies)
    - [load_python_strategies()](#load_python_strategies)
    - [load_cpp_strategies()](#load_cpp_strategies)
+   - [check_strategy()](#check_strategy)
 6. [Writing a Strategy](#writing-a-strategy)
    - [R skeleton](#r-skeleton)
    - [Python skeleton](#python-skeleton)
@@ -268,6 +269,49 @@ at compile time by the `// [[Rcpp::export]]` annotation in the C++ source. By
 convention the exported function should be named `cpp_<strategy_name>` to match
 the file name (e.g. `tit_for_tat.cpp` exports `cpp_tit_for_tat`). Files that
 fail to compile emit a warning and are skipped.
+
+---
+
+### `check_strategy()`
+
+`check_strategy()` validates a single strategy file before using it in a
+tournament. It loads or compiles the file, verifies that the expected symbol is
+registered, and runs a battery of behavioural checks against the strategy
+interface. A formatted pass/fail report is always printed to the console.
+
+**Signature:**
+
+```r
+check_strategy(filepath, env = .GlobalEnv, n_test_rounds = 50L,
+               payoff = flkbrg_payoff())
+```
+
+**Arguments:**
+
+| Argument        | Type            | Default           | Description                                              |
+|-----------------|-----------------|-------------------|----------------------------------------------------------|
+| `filepath`      | character       | —                 | Path to a `.py` or `.cpp` strategy file.                 |
+| `env`           | environment     | `.GlobalEnv`      | Where the loaded strategy function is assigned.          |
+| `n_test_rounds` | integer         | `50`              | Rounds used in the integration test match.               |
+| `payoff`        | `flkbrg_payoff` | `flkbrg_payoff()` | Payoff structure passed to the integration test match.   |
+
+**Checks performed:**
+
+| Check              | What is verified                                                                 |
+|--------------------|----------------------------------------------------------------------------------|
+| `file_exists`      | The file is found at `filepath`.                                                 |
+| `extension`        | The extension is `.py` or `.cpp`.                                                |
+| `load_compile`     | The file loads (Python) or compiles (C++) without error.                         |
+| `symbol_exists`    | The expected symbol (`py_<stem>` or `cpp_<stem>`) is present in `env`.          |
+| `is_callable`      | The registered symbol is a function.                                             |
+| `round1_no_info`   | Returns `"C"` or `"D"` on round 1 with empty histories and no `game_info`.      |
+| `round1_with_info` | Returns `"C"` or `"D"` on round 1 with a valid `game_info` object supplied.     |
+| `midgame_call`     | Returns `"C"` or `"D"` with non-empty histories mid-game.                       |
+| `integration`      | A full `match()` against `r_coop` completes and returns the expected structure.  |
+
+Checks are performed in order. If a blocking check fails, all downstream checks
+are marked `SKIP` rather than `FAIL`. The function returns a data frame of
+results invisibly and always prints the report regardless of outcome.
 
 ---
 
