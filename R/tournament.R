@@ -175,8 +175,7 @@ print.flkbrg_tournament <- function(x, ...) {
   cat("=== flkbrg Tournament Summary =======================================\n")
   cat(sprintf(
     "Tournament Details: %d strategies  |  %d rounds per match\n",
-    length(x$meta$strategies_list), x$meta$n_rounds
-  ))
+    length(x$meta$strategies_list), x$meta$n_rounds))
   cat("=====================================================================\n")
 
   print(x$standings, row.names = FALSE)
