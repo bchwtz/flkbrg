@@ -18,8 +18,13 @@
 #'   to create a custom payoff structure. Defaults to the standard
 #'   Prisoner's Dilemma: CC=3, CD=0, DC=5, DD=1.
 #'
-#' @return A named list with seven elements:
+#' @return A named list with the following elements:
 #'   \describe{
+#'     \item{\code{meta}}{A named list of tournament-level metadata:
+#'       \code{strategies_list} (the original list of strategy functions),
+#'       \code{n_rounds} (number of rounds played per match),
+#'       \code{include_info} (whether game info was passed to strategies), and
+#'       \code{payoff} (the \code{flkbrg_payoff} object used).}
 #'     \item{\code{standings}}{A data frame with one row per strategy, sorted
 #'       by descending \code{Avg_Score}. Contains columns: \code{Rank},
 #'       \code{Strategy}, \code{Avg_Score} (row mean of avg\_score\_matrix),
@@ -138,7 +143,14 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
 
   cat("\nTournament complete.\n")
 
-  return(list(
+  # Gather all the meta information
+  meta <- list( strategies_list = strategies_list,
+                n_rounds = n_rounds,
+                include_info = include_info,
+                payoff = payoff)
+
+  return(structure(list(
+    meta = meta,
     standings          = standings,
     avg_score_matrix   = avg_score_matrix,
     total_score_matrix = total_score_matrix,
@@ -146,5 +158,33 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
     jcoop_matrix       = jcoop_matrix,
     wins_matrix = wins_matrix,
     match_histories    = match_histories
+  ), class = "flkbrg_tournament"))
+}
+
+#' Print Method for flkbrg_tournament Objects
+#'
+#' Prints a concise summary of a tournament result, showing the standings
+#' table and listing the names of the additional returned items.
+#'
+#' @param x An object of class \code{flkbrg_tournament}.
+#' @param ... Further arguments passed to or from other methods (ignored).
+#'
+#' @return \code{x}, invisibly.
+#' @export
+print.flkbrg_tournament <- function(x, ...) {
+  cat("=== flkbrg Tournament Summary =======================================\n")
+  cat(sprintf(
+    "Tournament Details: %d strategies  |  %d rounds per match\n",
+    length(x$meta$strategies_list), x$meta$n_rounds
   ))
+  cat("=====================================================================\n")
+
+  print(x$standings, row.names = FALSE)
+
+  other_items <- setdiff(names(x), c("standings", "meta"))
+  cat("=====================================================================\n")
+  cat("Also available:", paste(other_items, collapse = ", "), "\n")
+  cat("=====================================================================\n")
+
+  invisible(x)
 }
