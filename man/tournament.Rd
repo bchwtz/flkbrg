@@ -29,21 +29,42 @@ to create a custom payoff structure. Defaults to the standard
 Prisoner's Dilemma: CC=3, CD=0, DC=5, DD=1.}
 }
 \value{
-A named list with three elements:
+A named list with the following elements:
 \describe{
+\item{\code{meta}}{A named list of tournament-level metadata:
+\code{strategies_list} (the original list of strategy functions),
+\code{n_rounds} (number of rounds played per match),
+\code{include_info} (whether game info was passed to strategies), and
+\code{payoff} (the \code{flkbrg_payoff} object used).}
 \item{\code{standings}}{A data frame with one row per strategy, sorted
 by descending \code{Avg_Score}. Contains columns: \code{Rank},
-\code{Strategy}, \code{Total_Score} (sum of all points earned),
-\code{Avg_Score} (row mean of score matrix), and
-\code{Coop_Rate} (row mean of coop matrix).}
-\item{\code{score_matrix}}{An \code{n x n} numeric matrix of average
+\code{Strategy}, \code{Avg_Score} (row mean of avg\_score\_matrix),
+\code{Coop_Rate} (row mean of coop\_matrix), \code{jCoop_Rate} (row
+mean of jcoop\_matrix), and \code{wins} (total round-level wins
+across all matchups).}
+\item{\code{avg_score_matrix}}{An \code{n x n} numeric matrix of average
 payoffs per round earned by strategy \code{[i, j]} against \code{[j]}.}
+\item{\code{total_score_matrix}}{An \code{n x n} numeric matrix of raw
+payoff points earned by strategy \code{[i, j]} against \code{[j]}.}
 \item{\code{coop_matrix}}{An \code{n x n} numeric matrix of cooperation
 rates (0 to 1) for each player in the matchups.}
+\item{\code{jcoop_matrix}}{An \code{n x n} symmetric numeric matrix of
+joint cooperation rates (0 to 1), i.e. the proportion of rounds in
+which \emph{both} players chose C. Entry \code{[i, j]} equals
+\code{[j, i]}.}
+\item{\code{wins_matrix}}{An \code{n x n} integer matrix counting the
+number of rounds in which strategy \code{[i]} earned a strictly higher
+payoff than strategy \code{[j]}.}
+\item{\code{match_histories}}{An \code{n x n} matrix of lists. Each cell
+\code{[i, j]} contains the full round-by-round history data frame for
+that matchup (columns \code{P1}, \code{P2}, \code{P1_Payoff},
+\code{P2_Payoff}). The matrix is symmetric: \code{[i, j]} and
+\code{[j, i]} point to the same history object.}
 }
 }
 \description{
 Executes a round robin tournament in which every unique pair of strategies
-(including self-play) is matched exactly once. Scores are normalised to the
-average payoff per round, following Axelrod's original ranking criterion.
+(including self-play) is matched exactly once. Multiple scores are provided
+to evaluate the tournament. For details see the description if the returned
+items.
 }
