@@ -1,8 +1,8 @@
-#' Run an Axelrod-Style Round Robin Tournament
+#' Run a flkbrg Round Robin Tournament
 #'
 #' Executes a round robin tournament in which every unique pair of strategies
 #' (including self-play) is matched exactly once. Multiple scores are provided
-#' to evaluate the tournament. For details see the description if the returned
+#' to evaluate the tournament. For details see the description of the returned
 #' items.
 #'
 #' @param strategies_list A named list of strategy functions. Each function must
@@ -18,7 +18,8 @@
 #'   to create a custom payoff structure. Defaults to the standard
 #'   Prisoner's Dilemma: CC=3, CD=0, DC=5, DD=1.
 #'
-#' @return A named list with the following elements:
+#' @return An object of class \code{flkbrg_tournament} (a named list) with
+#'   eight elements:
 #'   \describe{
 #'     \item{\code{meta}}{A named list of tournament-level metadata:
 #'       \code{strategies_list} (the original list of strategy functions),
@@ -28,9 +29,13 @@
 #'     \item{\code{standings}}{A data frame with one row per strategy, sorted
 #'       by descending \code{Avg_Score}. Contains columns: \code{Rank},
 #'       \code{Strategy}, \code{Avg_Score} (row mean of avg\_score\_matrix),
-#'       \code{Coop_Rate} (row mean of coop\_matrix), \code{jCoop_Rate} (row
-#'       mean of jcoop\_matrix), and \code{wins} (total round-level wins
-#'       across all matchups).}
+#'       \code{Sum_score} (row sum of total\_score\_matrix, i.e. total points
+#'       earned across all matchups including self-play), \code{Coop_Rate}
+#'       (row mean of coop\_matrix), \code{jCoop_Rate} (row mean of
+#'       jcoop\_matrix), and \code{match_wins} (number of matchups in which
+#'       this strategy's cumulative score strictly exceeded its opponent's,
+#'       out of a possible \code{n - 1} — self-play is excluded as a strategy
+#'       playing itself always produces equal scores for both sides).}
 #'     \item{\code{avg_score_matrix}}{An \code{n x n} numeric matrix of average
 #'       payoffs per round earned by strategy \code{[i, j]} against \code{[j]}.}
 #'     \item{\code{total_score_matrix}}{An \code{n x n} numeric matrix of raw
@@ -41,9 +46,13 @@
 #'       joint cooperation rates (0 to 1), i.e. the proportion of rounds in
 #'       which \emph{both} players chose C. Entry \code{[i, j]} equals
 #'       \code{[j, i]}.}
-#'     \item{\code{wins_matrix}}{An \code{n x n} integer matrix counting the
-#'       number of rounds in which strategy \code{[i]} earned a strictly higher
-#'       payoff than strategy \code{[j]}.}
+#'     \item{\code{wins_matrix}}{An \code{n x n} logical matrix where entry
+#'       \code{[i, j]} is \code{TRUE} if strategy \code{[i]} accumulated a
+#'       strictly higher total score than strategy \code{[j]} over all rounds
+#'       of that match, and \code{FALSE} otherwise. Draws are recorded as
+#'       \code{FALSE} for both players. The diagonal is always \code{FALSE}
+#'       as a strategy playing itself always produces equal scores for both
+#'       sides.}
 #'     \item{\code{match_histories}}{An \code{n x n} matrix of lists. Each cell
 #'       \code{[i, j]} contains the full round-by-round history data frame for
 #'       that matchup (columns \code{P1}, \code{P2}, \code{P1_Payoff},
@@ -89,16 +98,16 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
 
       # 1. Populate Average Score Matrix (Payoff per round)
       avg_score_matrix[idx, jdx] <- res$scores["P1"] / n_rounds
-      avg_score_matrix[jdx, idx] <- res$scores["P2"] / n_rounds
+      if (jdx != idx) avg_score_matrix[jdx, idx] <- res$scores["P2"] / n_rounds
 
       # 2. Populate Total Score Matrix (Raw points)
       total_score_matrix[idx, jdx] <- res$scores["P1"]
-      total_score_matrix[jdx, idx] <- res$scores["P2"]
+      if (jdx != idx) total_score_matrix[jdx, idx] <- res$scores["P2"]
 
       # 3. Populate Cooperation Matrix
       h <- res$history
       coop_matrix[idx, jdx] <- mean(h$P1 == "C")
-      coop_matrix[jdx, idx] <- mean(h$P2 == "C")
+      if (jdx != idx) coop_matrix[jdx, idx] <- mean(h$P2 == "C")
 
       # 4. Populate the Joint Cooperation Matrix
       jcoop_rate <- mean(h$P1 == h$P2 & h$P1 == "C" & h$P2 == "C")
@@ -107,12 +116,11 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
       # 5. Save Match Histories
       match_histories[idx, jdx] <- match_histories[jdx, idx] <- list(h)
 
-      # 6. Save Wins
-      wins_p1 <- sum(h$P1_Payoff > h$P2_Payoff)
-      wins_p2 <- sum(h$P1_Payoff < h$P2_Payoff)
-      draws   <- sum(h$P1_Payoff == h$P2_Payoff) # not returned
-      wins_matrix[idx, jdx] <- wins_p1
-      if (jdx != idx) wins_matrix[jdx, idx] <- wins_p2
+      # 6. Save the match win
+      win_p1 <- res$scores["P1"] > res$scores["P2"]
+      win_p2 <- res$scores["P1"] < res$scores["P2"]
+      wins_matrix[idx, jdx] <- win_p1
+      if (jdx != idx) wins_matrix[jdx, idx] <- win_p2
 
       done <- done + 1
       cat(sprintf("  [%d/%d] %s vs %s\n", done, total_matches,
@@ -122,17 +130,19 @@ tournament <- function(strategies_list, n_rounds = 200, include_info = TRUE,
 
   # Calculate standings metrics
   avg_scores   <- rowMeans(avg_score_matrix)
+  sum_total_scores <- rowSums(total_score_matrix, na.rm = TRUE)
   avg_coop     <- rowMeans(coop_matrix, na.rm = TRUE)
   avg_jcoop    <- rowMeans(jcoop_matrix, na.rm = TRUE)
-  sum_wins         <- rowSums(wins_matrix, na.rm = TRUE)
+  match_wins     <- rowSums(wins_matrix, na.rm = TRUE)
 
   standings <- data.frame(
     Rank        = NA,
     Strategy    = strat_names,
     Avg_Score   = avg_scores,
+    Sum_score = sum_total_scores,
     Coop_Rate   = avg_coop,
     jCoop_Rate = avg_jcoop,
-    wins       = sum_wins,
+    match_wins       = match_wins,
     stringsAsFactors = FALSE
   )
 

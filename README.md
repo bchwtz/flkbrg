@@ -214,12 +214,12 @@ tournament(strategies_list, n_rounds = 200, include_info = TRUE,
 An object of class `flkbrg_tournament` (a named list) with eight elements:
 
 - `meta` — a named list of tournament-level metadata: `strategies_list`, `n_rounds`, `include_info`, and `payoff`.
-- `standings` — a data frame sorted by descending `Avg_Score`, with columns `Rank`, `Strategy`, `Avg_Score`, `Coop_Rate`, `jCoop_Rate`, and `wins`.
+- `standings` — a data frame sorted by descending `Avg_Score`, with columns `Rank`, `Strategy`, `Avg_Score`, `Sum_score` (total points across all matchups), `Coop_Rate`, `jCoop_Rate`, and `match_wins` (number of matchups won out of `n - 1`; self-play excluded).
 - `avg_score_matrix` — an `n × n` matrix of **average** payoffs per round, where entry `[i, j]` is strategy `i`'s normalised score against strategy `j`.
 - `total_score_matrix` — an `n × n` matrix of **raw** cumulative scores across all rounds.
 - `coop_matrix` — an `n × n` matrix of cooperation rates (0–1), where entry `[i, j]` is the fraction of rounds strategy `i` played C against strategy `j`.
 - `jcoop_matrix` — a symmetric `n × n` matrix of joint cooperation rates, i.e. the fraction of rounds in which **both** strategies played C.
-- `wins_matrix` — an `n × n` integer matrix where entry `[i, j]` counts the rounds in which strategy `i` earned a strictly higher payoff than strategy `j`.
+- `wins_matrix` — an `n × n` logical matrix where entry `[i, j]` is `TRUE` if strategy `i`'s cumulative score strictly exceeded strategy `j`'s over the entire match. Draws and self-play are recorded as `FALSE`.
 - `match_histories` — a symmetric `n × n` matrix of lists; each cell contains the full round-by-round history data frame (`P1`, `P2`, `P1_Payoff`, `P2_Payoff`) for that matchup.
 
 Progress is printed to the console as each match completes.
@@ -621,14 +621,15 @@ $$\bar{C}_i = \frac{1}{n} \sum_{j=1}^{n} C_{ij}$$
 
 ### Interpreting the standings table
 
-| Column       | Formula                   | Interpretation                                               |
-|--------------|---------------------------|--------------------------------------------------------------|
-| `Rank`       | rank by $\bar{S}_i$ desc  | Overall position; 1 = best average performance.             |
-| `Strategy`   | —                         | The name supplied in `strategies_list`.                      |
-| `Avg_Score`  | $\bar{S}_i$               | Mean payoff per round across all opponents incl. self-play.  |
-| `Coop_Rate`  | $\bar{C}_i$               | Mean cooperation rate across all opponents incl. self-play.  |
-| `jCoop_Rate` | $\bar{J}_i$               | Mean joint cooperation rate (both players C) across all matchups. |
-| `wins`       | $\sum_j W_{ij}$           | Total rounds across all matchups in which this strategy earned a strictly higher payoff than its opponent. |
+| Column        | Formula                   | Interpretation                                               |
+|---------------|---------------------------|--------------------------------------------------------------|
+| `Rank`        | rank by $\bar{S}_i$ desc  | Overall position; 1 = best average performance.             |
+| `Strategy`    | —                         | The name supplied in `strategies_list`.                      |
+| `Avg_Score`   | $\bar{S}_i$               | Mean payoff per round across all opponents incl. self-play.  |
+| `Sum_score`   | $\sum_j R_{ij}$           | Total raw points earned across all matchups incl. self-play. |
+| `Coop_Rate`   | $\bar{C}_i$               | Mean cooperation rate across all opponents incl. self-play.  |
+| `jCoop_Rate`  | $\bar{J}_i$               | Mean joint cooperation rate (both players C) across all matchups. |
+| `match_wins`  | $\sum_j W_{ij}$           | Number of matchups in which this strategy's cumulative score strictly exceeded its opponent's, out of a possible $n - 1$ (self-play excluded). |
 
 A strategy with a high `Avg_Score` and a high `Coop_Rate` achieves good
 outcomes through mutual cooperation. A strategy with a high `Avg_Score` but a

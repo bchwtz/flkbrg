@@ -5,6 +5,8 @@ python_strategies   <- load_python_strategies("strategies")
 cpp_strategies      <- load_cpp_strategies("strategies")
 r_strategies_flkbrg <- c("r_tit_for_tat", "r_traitor", "r_defect", "r_coop")
 
+# Check external Strategies - The referenced File must exist
+check_strategy("/strategies/cooperate.py")
 
 # Create a Payoff Matrix
 payoff <- flkbrg_payoff(CC = c(3, 3), CD = c(0, 5), DC = c(5, 0), DD = c(1, 1))
@@ -32,8 +34,8 @@ contestants <- c(mget(python_strategies),
                  mget(r_strategies_flkbrg, envir = asNamespace("flkbrg")))
 
 # Play the tournament
-tournament_result <- tournament(contestants, n_rounds = 200)
+tournament_result <- tournament(contestants, n_rounds = 20)
 tournament_result
+tournament_result$wins_matrix
 
-test <- check_strategy("/strategies/cooperate.py")
-test
+tournament_result$total_score_matrix
