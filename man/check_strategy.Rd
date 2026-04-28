@@ -2,20 +2,25 @@
 % Please edit documentation in R/check_strategies.R
 \name{check_strategy}
 \alias{check_strategy}
-\title{Check a Single Strategy File}
+\title{Check a Single Strategy}
 \usage{
 check_strategy(
-  filepath,
+  filepath = NULL,
+  FUN = NULL,
   env = .GlobalEnv,
-  n_test_rounds = 50L,
+  n_test_rounds = 50,
   payoff = flkbrg_payoff()
 )
 }
 \arguments{
-\item{filepath}{Character. Path to a \code{.py} or \code{.cpp} strategy file.}
+\item{filepath}{Character. Path to a \code{.py} or \code{.cpp} strategy
+file. Mutually exclusive with \code{FUN}.}
 
-\item{env}{Environment. Where the loaded strategy function is assigned.
-Defaults to \code{.GlobalEnv}.}
+\item{FUN}{A strategy function already loaded in R (including compiled C++
+or wrapped Python strategies). Mutually exclusive with \code{filepath}.}
+
+\item{env}{Environment. Where a file-loaded strategy function is assigned.
+Ignored when \code{FUN} is supplied. Defaults to \code{.GlobalEnv}.}
 
 \item{n_test_rounds}{Integer. Number of rounds used in the integration test
 match. Defaults to \code{50}.}
@@ -28,13 +33,21 @@ A data frame with columns \code{check}, \code{status}, and
 \code{message}, invisibly. The report is always printed to the console.
 }
 \description{
-Loads (Python) or compiles and loads (C++) a single strategy file, verifies
-that the expected symbol is registered, runs a battery of behavioural
-checks, and prints a formatted pass/fail report to the console.
+Validates a strategy supplied either as a file path (\code{.py} or
+\code{.cpp}) or as an already-loaded R function via \code{FUN}. When a file
+is supplied, it is loaded or compiled first. When \code{FUN} is supplied
+directly, the file-related checks are skipped. In both cases the function
+runs a battery of behavioural checks and prints a formatted pass/fail report
+to the console.
 }
 \details{
+Exactly one of \code{filepath} or \code{FUN} must be provided.
+
 The following checks are performed in order. If a check fails, subsequent
-checks that depend on it are skipped and marked as \code{SKIP}.
+checks that depend on it are skipped and marked as \code{SKIP}. When
+\code{FUN} is supplied, the first four checks (\code{file_exists},
+\code{extension}, \code{load_compile}, \code{symbol_exists}) are
+automatically skipped as they are not applicable.
 
 \describe{
 \item{file_exists}{The file can be found at \code{filepath}.}
