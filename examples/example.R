@@ -34,7 +34,10 @@ contestants <- c(mget(python_strategies),
                  mget(cpp_strategies),
                  mget(r_strategies_flkbrg, envir = asNamespace("flkbrg")))
 
+# Check all already loaded functions before the tournament
+sapply(contestants, function(FUN) check_strategy(FUN=FUN))
+
 # Play the tournament
-tournament_result <- tournament(contestants, n_rounds = 20)
+tournament_result <- tournament(contestants, n_rounds = 200)
 tournament_result
 
