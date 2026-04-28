@@ -1,12 +1,20 @@
-#' Check a Single Strategy File
+#' Check a Single Strategy
 #'
-#' Loads (Python) or compiles and loads (C++) a single strategy file, verifies
-#' that the expected symbol is registered, runs a battery of behavioural
-#' checks, and prints a formatted pass/fail report to the console.
+#' Validates a strategy supplied either as a file path (\code{.py} or
+#' \code{.cpp}) or as an already-loaded R function via \code{FUN}. When a file
+#' is supplied, it is loaded or compiled first. When \code{FUN} is supplied
+#' directly, the file-related checks are skipped. In both cases the function
+#' runs a battery of behavioural checks and prints a formatted pass/fail report
+#' to the console.
 #'
-#' @param filepath Character. Path to a \code{.py} or \code{.cpp} strategy file.
-#' @param env Environment. Where the loaded strategy function is assigned.
-#'   Defaults to \code{.GlobalEnv}.
+#' Exactly one of \code{filepath} or \code{FUN} must be provided.
+#'
+#' @param filepath Character. Path to a \code{.py} or \code{.cpp} strategy
+#'   file. Mutually exclusive with \code{FUN}.
+#' @param FUN A strategy function already loaded in R (including compiled C++
+#'   or wrapped Python strategies). Mutually exclusive with \code{filepath}.
+#' @param env Environment. Where a file-loaded strategy function is assigned.
+#'   Ignored when \code{FUN} is supplied. Defaults to \code{.GlobalEnv}.
 #' @param n_test_rounds Integer. Number of rounds used in the integration test
 #'   match. Defaults to \code{50}.
 #' @param payoff An object of class \code{flkbrg_payoff}. Passed to the
@@ -14,7 +22,10 @@
 #'
 #' @details
 #' The following checks are performed in order. If a check fails, subsequent
-#' checks that depend on it are skipped and marked as \code{SKIP}.
+#' checks that depend on it are skipped and marked as \code{SKIP}. When
+#' \code{FUN} is supplied, the first four checks (\code{file_exists},
+#' \code{extension}, \code{load_compile}, \code{symbol_exists}) are
+#' automatically skipped as they are not applicable.
 #'
 #' \describe{
 #'   \item{file_exists}{The file can be found at \code{filepath}.}
@@ -38,10 +49,22 @@
 #'   \code{message}, invisibly. The report is always printed to the console.
 #'
 #' @export
-check_strategy <- function(filepath,
+check_strategy <- function(filepath      = NULL,
+                           FUN           = NULL,
                            env           = .GlobalEnv,
-                           n_test_rounds = 50L,
+                           n_test_rounds = 50,
                            payoff        = flkbrg_payoff()) {
+
+  # ── Validate arguments ──────────────────────────────────────────────────────
+
+  if (is.null(filepath) && is.null(FUN))
+    stop("One of 'filepath' or 'FUN' must be supplied.")
+  if (!is.null(filepath) && !is.null(FUN))
+    stop("'filepath' and 'FUN' are mutually exclusive. Supply only one.")
+
+  # Capture the display name before anything else so deparse works correctly
+  fun_label <- if (!is.null(FUN)) deparse(substitute(FUN)) else basename(filepath)
+
 
   # ── Internal state ──────────────────────────────────────────────────────────
 
@@ -56,7 +79,14 @@ check_strategy <- function(filepath,
   }
 
   skip <- function(name) {
-    checks[[name]] <<- list(status = "SKIP", message = "skipped due to earlier failure")
+    checks[[name]] <<- list(status = "SKIP", message = "not applicable")
+  }
+
+  skip_remaining <- function(from) {
+    idx <- which(all_check_names == from)
+    for (nm in all_check_names[seq(idx, length(all_check_names))]) {
+      checks[[nm]] <<- list(status = "SKIP", message = "skipped due to earlier failure")
+    }
   }
 
   all_check_names <- c(
@@ -65,12 +95,18 @@ check_strategy <- function(filepath,
     "midgame_call", "integration"
   )
 
-  skip_remaining <- function(from) {
-    idx <- which(all_check_names == from)
-    for (nm in all_check_names[seq(idx, length(all_check_names))]) skip(nm)
-  }
-
   # ── Print helper (called once at the end) ───────────────────────────────────
+
+  make_df <- function() {
+    data.frame(
+      check   = all_check_names,
+      status  = vapply(all_check_names,
+                       function(nm) checks[[nm]]$status,  character(1)),
+      message = vapply(all_check_names,
+                       function(nm) checks[[nm]]$message, character(1)),
+      stringsAsFactors = FALSE
+    )
+  }
 
   print_report <- function(lang, expected_name) {
     df       <- make_df()
@@ -79,8 +115,7 @@ check_strategy <- function(filepath,
     symbols  <- c(PASS = "v", FAIL = "x", SKIP = "-")
 
     cat("---\n")
-    cat(sprintf("  flkbrg Strategy Check  |  %s  |  %s\n",
-                basename(filepath), overall))
+    cat(sprintf("  flkbrg Strategy Check  |  %s  |  %s\n", fun_label, overall))
     cat("---\n")
     if (!is.na(lang))
       cat(sprintf("  Language : %s\n", lang))
@@ -98,98 +133,106 @@ check_strategy <- function(filepath,
     cat("---\n")
   }
 
-  make_df <- function() {
-    data.frame(
-      check   = all_check_names,
-      status  = vapply(all_check_names,
-                       function(nm) checks[[nm]]$status,  character(1)),
-      message = vapply(all_check_names,
-                       function(nm) checks[[nm]]$message, character(1)),
-      stringsAsFactors = FALSE
-    )
-  }
-
   finish <- function(lang = NA_character_, expected_name = NA_character_) {
     print_report(lang, expected_name)
     invisible(make_df())
   }
 
-  # ── Check 1: file exists ────────────────────────────────────────────────────
+  # ── FUN path: skip file checks, go straight to behavioural checks ───────────
 
-  if (!file.exists(filepath)) {
-    fail("file_exists", paste("file not found:", filepath))
-    skip_remaining("extension")
-    return(finish())
-  }
-  pass("file_exists")
+  if (!is.null(FUN)) {
+    for (nm in c("file_exists", "extension", "load_compile", "symbol_exists"))
+      skip(nm)
+    fn            <- FUN
+    lang          <- "R"
+    expected_name <- fun_label
 
-  # ── Check 2: extension ─────────────────────────────────────────────────────
-
-  ext  <- tools::file_ext(filepath)
-  stem <- tools::file_path_sans_ext(basename(filepath))
-
-  if (!ext %in% c("py", "cpp")) {
-    fail("extension", paste0("unsupported extension '.", ext,
-                             "' (expected .py or .cpp)"))
-    skip_remaining("load_compile")
-    return(finish())
-  }
-  pass("extension")
-
-  lang          <- if (ext == "py") "python" else "cpp"
-  prefix        <- if (lang == "python") "py_" else "cpp_"
-  expected_name <- paste0(prefix, stem)
-
-  # ── Check 3: load / compile ────────────────────────────────────────────────
-
-  fn <- NULL
-
-  if (lang == "python") {
-    load_ok <- tryCatch({
-      reticulate::source_python(filepath, envir = env)
-      raw <- get("strategy", envir = env, inherits = FALSE)
-      assign(expected_name, raw, envir = env)
-      fn <- raw
-      TRUE
-    }, error = function(e) conditionMessage(e))
+    if (!is.function(fn)) {
+      fail("is_callable", paste(expected_name, "is not a function"))
+      skip_remaining("round1_no_info")
+      return(finish(lang, expected_name))
+    }
+    pass("is_callable")
 
   } else {
-    load_ok <- tryCatch({
-      Rcpp::sourceCpp(filepath)
-      fn <- get(expected_name, envir = .GlobalEnv)
-      if (!identical(env, .GlobalEnv))
-        assign(expected_name, fn, envir = env)
-      TRUE
-    }, error = function(e) conditionMessage(e))
+
+    # ── Check 1: file exists ──────────────────────────────────────────────────
+
+    if (!file.exists(filepath)) {
+      fail("file_exists", paste("file not found:", filepath))
+      skip_remaining("extension")
+      return(finish())
+    }
+    pass("file_exists")
+
+    # ── Check 2: extension ────────────────────────────────────────────────────
+
+    ext  <- tools::file_ext(filepath)
+    stem <- tools::file_path_sans_ext(basename(filepath))
+
+    if (!ext %in% c("py", "cpp")) {
+      fail("extension", paste0("unsupported extension '.", ext,
+                               "' (expected .py or .cpp)"))
+      skip_remaining("load_compile")
+      return(finish())
+    }
+    pass("extension")
+
+    lang          <- if (ext == "py") "python" else "cpp"
+    prefix        <- if (lang == "python") "py_" else "cpp_"
+    expected_name <- paste0(prefix, stem)
+
+    # ── Check 3: load / compile ───────────────────────────────────────────────
+
+    fn <- NULL
+
+    if (lang == "python") {
+      load_ok <- tryCatch({
+        reticulate::source_python(filepath, envir = env)
+        raw <- get("strategy", envir = env, inherits = FALSE)
+        assign(expected_name, raw, envir = env)
+        fn <- raw
+        TRUE
+      }, error = function(e) conditionMessage(e))
+
+    } else {
+      load_ok <- tryCatch({
+        Rcpp::sourceCpp(filepath)
+        fn <- get(expected_name, envir = .GlobalEnv)
+        if (!identical(env, .GlobalEnv))
+          assign(expected_name, fn, envir = env)
+        TRUE
+      }, error = function(e) conditionMessage(e))
+    }
+
+    if (!isTRUE(load_ok)) {
+      fail("load_compile", load_ok)
+      skip_remaining("symbol_exists")
+      return(finish(lang, expected_name))
+    }
+    pass("load_compile")
+
+    # ── Check 4: symbol exists ────────────────────────────────────────────────
+
+    if (is.null(fn) || !exists(expected_name, envir = env, inherits = FALSE)) {
+      fail("symbol_exists",
+           paste("expected symbol", expected_name, "not found after loading"))
+      skip_remaining("is_callable")
+      return(finish(lang, expected_name))
+    }
+    pass("symbol_exists")
+
+    # ── Check 5: is callable ──────────────────────────────────────────────────
+
+    if (!is.function(fn)) {
+      fail("is_callable", paste(expected_name, "is not a function"))
+      skip_remaining("round1_no_info")
+      return(finish(lang, expected_name))
+    }
+    pass("is_callable")
   }
 
-  if (!isTRUE(load_ok)) {
-    fail("load_compile", load_ok)
-    skip_remaining("symbol_exists")
-    return(finish(lang, expected_name))
-  }
-  pass("load_compile")
-
-  # ── Check 4: symbol exists ─────────────────────────────────────────────────
-
-  if (is.null(fn) || !exists(expected_name, envir = env, inherits = FALSE)) {
-    fail("symbol_exists",
-         paste("expected symbol", expected_name, "not found after loading"))
-    skip_remaining("is_callable")
-    return(finish(lang, expected_name))
-  }
-  pass("symbol_exists")
-
-  # ── Check 5: is callable ───────────────────────────────────────────────────
-
-  if (!is.function(fn)) {
-    fail("is_callable", paste(expected_name, "is not a function"))
-    skip_remaining("round1_no_info")
-    return(finish(lang, expected_name))
-  }
-  pass("is_callable")
-
-  # ── Shared helpers for behavioural checks ──────────────────────────────────
+  # ── Shared helpers for behavioural checks ───────────────────────────────────
 
   absent_info <- if (lang == "cpp") NULL else NA
 
@@ -202,7 +245,7 @@ check_strategy <- function(filepath,
     is.character(x) && length(x) == 1 && x %in% c("C", "D")
   }
 
-  # ── Check 6: round 1, no game_info ────────────────────────────────────────
+  # ── Check 6: round 1, no game_info ─────────────────────────────────────────
 
   r1_no <- call_fn(character(0), character(0), absent_info)
   if (is_valid_move(r1_no)) {
@@ -212,7 +255,7 @@ check_strategy <- function(filepath,
          paste("expected 'C' or 'D', got:", paste(r1_no, collapse = " ")))
   }
 
-  # ── Check 7: round 1, with game_info ──────────────────────────────────────
+  # ── Check 7: round 1, with game_info ───────────────────────────────────────
 
   r1_yes <- call_fn(character(0), character(0),
                     list(total_rounds = n_test_rounds, current_round = 1L))
@@ -223,7 +266,7 @@ check_strategy <- function(filepath,
          paste("expected 'C' or 'D', got:", paste(r1_yes, collapse = " ")))
   }
 
-  # ── Check 8: mid-game call ─────────────────────────────────────────────────
+  # ── Check 8: mid-game call ──────────────────────────────────────────────────
 
   hist_so_far <- c("C", "D", "C", "C", "D")
   mid <- call_fn(hist_so_far, rev(hist_so_far),
@@ -236,7 +279,7 @@ check_strategy <- function(filepath,
          paste("expected 'C' or 'D', got:", paste(mid, collapse = " ")))
   }
 
-  # ── Check 9: integration via match() ──────────────────────────────────────
+  # ── Check 9: integration via match() ───────────────────────────────────────
 
   int_ok <- tryCatch({
     res    <- match(fn, r_coop,
