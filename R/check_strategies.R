@@ -10,7 +10,9 @@
 #' @param n_test_rounds Integer. Number of rounds used in the integration test
 #'   match. Defaults to \code{50}.
 #' @param payoff An object of class \code{flkbrg_payoff}. Passed to the
-#'   integration test match. Defaults to \code{flkbrg_payoff()}.
+#'   integration test match. Defaults to the standard payoff
+#'   (CC=3, CD=0, DC=5, DD=1), constructed internally without calling
+#'   \code{flkbrg_payoff()}.
 #'
 #' @details
 #' The following checks are performed in order. If a check fails, subsequent
@@ -41,7 +43,22 @@
 check_strategy <- function(filepath,
                            env           = .GlobalEnv,
                            n_test_rounds = 50L,
-                           payoff        = flkbrg_payoff()) {
+                           payoff        = NULL) {
+
+  # Build the default payoff internally to avoid a dependency on flkbrg_payoff()
+  if (is.null(payoff)) {
+    moves <- c("C", "D")
+    payoff <- structure(
+      list(
+        CC = c(3, 3), CD = c(0, 5), DC = c(5, 0), DD = c(1, 1),
+        P1 = matrix(c(3, 5, 0, 1), nrow = 2,
+                    dimnames = list(P1 = moves, P2 = moves)),
+        P2 = matrix(c(3, 5, 0, 1), nrow = 2,
+                    dimnames = list(P1 = moves, P2 = moves))
+      ),
+      class = "flkbrg_payoff"
+    )
+  }
 
   # ── Internal state ──────────────────────────────────────────────────────────
 
