@@ -313,6 +313,21 @@ Checks are performed in order. If a blocking check fails, all downstream checks
 are marked `SKIP` rather than `FAIL`. The function returns a data frame of
 results invisibly and always prints the report regardless of outcome.
 
+To allow for external strategy checks a more than flimsy hack is provided that loads 
+the necessary functions and performs the check. Only the R evironment and the local
+strategyfile (either .poy or .cpp) are required. If you are working with the package
+and have it installed it is **not recommended** to check a strategy via this path. If
+you do it anyway ensure that the functions (`flkbrg_payoff`, `match`, `check_strategy`) 
+and artefacts created by `check_strategy`are removed from the global environment afterwards.
+
+```r
+# install.packages("devtools)
+library(devtools)
+source_url('https://strategycheck.flkbrg.de')
+check_strategy("path/to/strategy.py")
+# Ex: check_strategy("strategies/grudger.py")
+```
+
 ---
 
 ## Writing a Strategy

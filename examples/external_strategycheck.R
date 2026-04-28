@@ -13,7 +13,7 @@ rm("print.flkbrg_payoff"); rm("r_defect"); rm("r_tit_for_tat"); rm("r_traitor")
 # which the relative path to a .py or .cpp file must be provided.
 #-------------------------------------------------------------------------------
 
-# install.packages("devtools)
+## install.packages("devtools)
 # library(devtools)
 # source_url('https://strategycheck.flkbrg.de')
 # check_strategy("path/to/strategy.py")
